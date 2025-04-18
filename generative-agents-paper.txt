@@ -1,0 +1,712 @@
+2.3 Large Language Models and Human
+Behavior
+Generative agents leverage a large language model to power their
+behavior. The key observation is that large language models encode
+a wide range of human behavior from their training data [15, 18]. If
+prompted with a narrowly defined context, the models can be used
+to generate believable behavior. Recent work has demonstrated
+the efficacy of this approach. For instance, social simulacra used a
+large language model to generate users that would populate new
+social computing systems to prototype their emergent social dynam-
+ics [80]. This approach used a prompt chain [105, 106] to generate
+short natural language descriptions of personas and their behaviors
+as they appear in the system being prototyped. Other empirical
+studies have replicated existing social science studies [46], political
+surveys [92], and generated synthetic data [39]. Large language
+models have also been used to generate interactive human behavior
+for users to engage with. In gaming, for instance, these models have
+been employed to create interactive fiction [37] and text adventure
+games [21]. With their ability to generate and decompose action
+sequences, large language models have also been used in planning
+robotics tasks [48]. For example, when presented with a task, such
+as picking up a bottle, the model is prompted to break down the
+task into smaller action sequences, such as heading to the table
+where the bottle is located and picking it up.
+We posit that, based on the work summarized above, large lan-
+guage models can become a key ingredient for creating believable
+agents. The existing literature largely relies on what could be con-
+sidered first-order templates that employ few-shot prompts [38, 66]
+or chain-of-thought prompts [100]. These templates are effective in
+generating behavior that is conditioned solely on the agent’s cur-
+rent environment (e.g., how would a troll respond to a given post,
+what actions would a robot need to take to enter a room given that
+there is a door). However, believable agents require conditioning
+not only on their current environment but also on a vast amount
+of past experience, which is a poor fit (and as of today, impossi-
+ble due to the underlying models’ limited context window) using
+first-order prompting. Recent studies have attempted to go beyond
+first-order prompting by augmenting language models with a static
+knowledge base and an information retrieval scheme [53] or with
+a simple summarization scheme [104]. This paper extends these
+ideas to craft an agent architecture that handles retrieval where
+past experience is dynamically updated at each time step and mixed
+with agents’ current context and plans, which may either reinforce
+or contradict each other.
+3 GENERATIVE AGENT BEHAVIOR AND
+INTERACTION
+To illustrate the affordances of generative agents, we instantiate
+them as characters in a simple sandbox world reminiscent of The
+Sims [7]. This sprite-based sandbox game world, Smallville, evokes
+a small town environment. In this section, we will walk through the
+affordances and interactions with generative agents in Smallville
+and describe how the agents behave within it. Then, in Section 4,
+we will introduce our generative agent architecture that powers
+these affordances and interactions. In Section 5, we will describe the
+Generative Agents UIST ’23, October 29-November 1, 2023, San Francisco, CA, USA
+Figure 2: The Smallville sandbox world, with areas labeled. The root node describes the entire world, children describe areas
+(e.g., houses, cafe, stores), and leaf nodes describe objects (e.g., table, bookshelf). Agents remember a subgraph that reflects the
+parts of the world they have seen, maintaining the state of those parts as they observed them.
+implementation of the sandbox environment and how the agents
+interact with the underlying engine of the sandbox world.
+3.1 Agent Avatar and Communication
+A community of 25 unique agents inhabits Smallville. Each agent is
+represented by a simple sprite avatar. We authored one paragraph
+of natural language description to depict each agent’s identity,
+including their occupation and relationship with other agents, as
+seed memories. For example, John Lin has the following description:
+John Lin is a pharmacy shopkeeper at the Willow
+Market and Pharmacy who loves to help people. He
+is always looking for ways to make the process
+of getting medication easier for his customers;
+John Lin is living with his wife, Mei Lin, who
+is a college professor, and son, Eddy Lin, who is
+a student studying music theory; John Lin loves
+his family very much; John Lin has known the old
+couple next-door, Sam Moore and Jennifer Moore,
+for a few years; John Lin thinks Sam Moore is a
+kind and nice man; John Lin knows his neighbor,
+Yuriko Yamamoto, well; John Lin knows of his
+neighbors, Tamara Taylor and Carmen Ortiz, but
+has not met them before; John Lin and Tom Moreno
+are colleagues at The Willows Market and Pharmacy;
+John Lin and Tom Moreno are friends and like to
+discuss local politics together; John Lin knows
+the Moreno family somewhat well — the husband Tom
+Moreno and the wife Jane Moreno.
+Each semicolon-delimited phrase is entered into the agent’s initial
+memory as memories at the start of the simulation.
+3.1.1 Inter-Agent Communication. The agents interact with the
+world by their actions, and with each other through natural lan-
+guage. At each time step of the sandbox engine, the agents output a
+natural language statement describing their current action, such as
+“Isabella Rodriguez is writing in her journal”, “Isabella Rodriguez is
+checking her emails”, “Isabella Rodriguez is talking with her family
+on the phone”, or “Isabella Rodriguez is getting ready for bed.” This
+statement is then translated into concrete movements that affect
+the sandbox world. The action is displayed on the sandbox inter-
+face as a set of emojis, providing an abstract representation of the
+action from an overhead view. To achieve this, the system utilizes
+a language model to translate the action into a set of emojis, which
+appear above each avatar’s head in a speech bubble. For example,
+“Isabella Rodriguez is writing in her journal” is displayed as ,
+while “Isabella Rodriguez is checking her emails” appears as .
+The complete natural language description of the action can be
+accessed by clicking on the agent’s avatar.
+Agents communicate with each other in full natural language.
+They are aware of other agents in their local area, and the generative
+agent architecture determines whether they walk by or engage
+in conversation. Here, a sample in the middle of a conversation
+between the agents Isabella Rodriguez and Tom Moreno about the
+upcoming election:3
+Isabella: I’m still weighing my options, but I’ve been
+discussing the election with Sam Moore. What are
+your thoughts on him?
+Tom: To be honest, I don’t like Sam Moore. I think
+he’s out of touch with the community and doesn’t
+have our best interests at heart.
+3We note that the conversational style of these agents can feel overly formal, likely a
+result of instruction tuning in the underlying models. We expect that the writing style
+will be better controllable in future language models.
+UIST ’23, October 29-November 1, 2023, San Francisco, CA, USA 3.1.2 User Controls. The user communicates with the agent through
+natural language by specifying a persona that the agent should per-
+ceive them as. For example, if the user specifies that they are a news
+“reporter” and asks about the upcoming election by saying, “Who
+is running for office?”, the John agent replies:
+John: My friends Yuriko, Tom and I have been talk-
+ing about the upcoming election and discussing the
+candidate Sam Moore. We have all agreed to vote for
+him because we like his platform.
+To directly command one of the agents, the user takes on the per-
+sona of the agent’s “inner voice”—this makes the agent more likely
+to treat the statement as a directive. For instance, when told “You
+are going to run against Sam in the upcoming election” by a user
+as John’s inner voice, John decides to run in the election and shares
+his candidacy with his wife and son.
+3.2 Environmental Interaction
+Smallville features the common affordances of a small village, in-
+cluding a cafe, bar, park, school, dorm, houses, and stores. It also
+defines subareas and objects that make those spaces functional,
+such as a kitchen in a house and a stove in the kitchen (Figure 2).
+All spaces serving as agents’ primary living quarters feature a bed,
+desk, closet, shelf, as well as a bathroom and a kitchen.4
+Agents move around Smallville as one would in a simple video
+game, entering and leaving buildings, navigating its map, and ap-
+proaching other agents. Agent movements are directed by the gen-
+erative agent architecture and the sandbox game engine: when the
+model dictates that the agent will move to a location, we calculate
+a walking path to the destination in the Smallville environment,
+and the agent begins moving. In addition, users can also enter the
+sandbox world of Smallville as an agent operating within it. The
+agent that the user embodies can be an agent already present in
+the world, such as Isabella and John, or it can be an outside visitor
+with no prior history in Smallville. The inhabitants of Smallville
+will treat the user-controlled agent no differently than they treat
+each other. They recognize its presence, initiate interactions, and
+remember its behavior before forming opinions about it.
+Users and agents can influence the state of the objects in this
+world, much like in sandbox games such as The Sims. For example,
+a bed can be occupied when an agent is sleeping, and a refrigerator
+can be empty when an agent uses up the ingredients to make
+breakfast. End users can also reshape an agent’s environment in
+Smallville by rewriting the status of objects surrounding the agent
+in natural language. For instance, when Isabella is making breakfast
+in the morning, the user can change the status of the kitchen stove
+from “turned on” to “burning” by inputting a command to the
+system that chooses the object and illustrates its new status, like
+this: “<Isabella’s apartment: kitchen: stove> is burning.” Isabella
+will notice this in the next moment and go to turn off the stove
+and remake her breakfast. Likewise, if the user sets the status of
+Isabella’s shower to “leaking water” when she enters the bathroom,
+she will gather tools from her living room and try to fix the leak.
+4This environment design is not the focus of our work, so we generated this environ-
+ment manually, not automatically. Future work can continue to expand the richness of
+the agents’ environments.
+J.S. Park, J.C. O’Brien, C.J. Cai, M.R. Morris, P. Liang, M.S. Bernstein
+3.3 Example “Day in the Life”
+Starting from the single-paragraph description, generative agents
+begin planning their days. As time passes in the sandbox world,
+their behaviors evolve as these agents interact with each other and
+the world, building memories and relationships, and coordinating
+joint activities.
+We demonstrate the behavior of generative agents by tracing the
+output of our system over the course of one day for the agent John
+Lin (Figure 3). In the Lin family, John is the first to wake up at 7 a.m.
+He brushes his teeth, takes a shower, gets dressed, eats breakfast,
+and checks the news at the dining table in the living room. At 8
+a.m., Eddy follows suit, rushing out of bed to prepare for his classes.
+He catches up with John just as he is about to head out:
+John: Good morning Eddy. Did you sleep well?
+Eddy: Good morning dad. Yeah, I slept great.
+John: That’s good. What are you working on today?
+Eddy: I’m working on a new music composition for
+my class. It’s due this week, so I’m trying to get it
+finished. But I’m having so much fun with it!
+John: That sounds great!
+Soon after Eddy heads out, Mei wakes up and joins John. Mei asks
+about her son, and John recalls the conversation they just had:
+Mei: Did Eddy already leave for school?
+John: Yes, he just left. He’s working on a music
+composition for his class.
+Mei: Oh, that’s wonderful! Tell me about it.
+John: I think he’s really enjoying it! He said he’s
+having a lot of fun with it.
+Mei: That’s great! I’m so proud of him.
+As they finish their conversation, Mei and John pack up. Mei goes
+on to teach and work on her research paper, while John opens his
+pharmacy counter at the Willow Market and Pharmacy by 9 a.m.
+3.4 Emergent Social Behaviors
+By interacting with each other, generative agents in Smallville
+exchange information, form new relationships, and coordinate joint
+activities. Extending prior work [80], these social behaviors are
+emergent rather than pre-programmed.
+3.4.1 Information Diffusion. As agents notice each other, they may
+engage in dialogue—as they do so, information can spread from
+agent to agent. For instance, in a conversation between Sam and
+Tom at the grocery store, Sam tells Tom about his candidacy in the
+local election:
+Sam: Hey Tom, how’s it going?
+Tom: Good, thanks. What’s up?
+Sam: Well, I wanted to talk to you about something.
+I’m actually running for mayor in the upcoming local
+election.
+Tom: Really? That’s great news! Why are you run-
+ning?
+Sam: I’ve been involved in local politics for years
+now, and I really feel like I can make a difference in
+our community. Plus, I want to bring new ideas and
+perspectives to the table.
+Generative Agents UIST ’23, October 29-November 1, 2023, San Francisco, CA, USA
+Figure 3: A morning in the life of a generative agent, John Lin. John wakes up around 6 am and completes his morning routine,
+which includes brushing his teeth, taking a shower, and eating breakfast. He briefly catches up with his wife, Mei, and son,
+Eddy, before heading out to begin his workday.
+Figure 4: At the beginning of the simulation, one agent is
+initialized with an intent to organize a Valentine’s Day party.
+Despite many possible points of failure in the ensuing chain
+of events—agents might not act on that intent, might forget
+to tell others, might not remember to show up—the Valen-
+tine’s Day party does, in fact, occur, with a number of agents
+gathering and interacting.
+Later that day, after Sam left, Tom and John, who heard the news
+from another source, discuss Sam’s chances of winning the election:
+John: I heard that Sam Moore is running for mayor
+in the local election. Do you think he has a good
+chance of winning?
+Tom: I do think he has a good chance. He’s been
+working hard in the community and I think he will
+get a lot of support. What do you think?
+John: I think it’s great that he’s running. I’m curious
+to see how the election will turn out.
+Gradually, Sam’s candidacy becomes the talk of the town, with
+some supporting him and others remaining undecided.
+3.4.2 Relationship Memory. Agents in Smallville form new rela-
+tionships over time and remember their interactions with other
+agents. For example, at the start, Sam does not know Latoya Williams.
+While taking a walk in Johnson Park, Sam runs into Latoya, and
+they introduce themselves. Latoya mentions that she is working
+on a photography project: “I’m here to take some photos for a
+project I’m working on.” In a later interaction, Sam’s interactions
+with Latoya indicate a memory of that interaction, as he asks “Hi,
+Latoya. How is your project going?” and she replies “Hi, Sam. It’s
+going well!”
+3.4.3 Coordination. Generative agents coordinate with each other.
+Isabella Rodriguez, at Hobbs Cafe, is initialized with an intent to
+plan a Valentine’s Day party from 5 to 7 p.m. on February 14th. From
+this seed, the agent proceeds to invite friends and customers when
+she sees them at Hobbs Cafe or elsewhere. Isabella then spends the
+afternoon of the 13th decorating the cafe for the occasion. Maria, a
+frequent customer and close friend of Isabella’s, arrives at the cafe.
+Isabella asks for Maria’s help in decorating for the party, and Maria
+agrees. Maria’s character description mentions that she has a crush
+on Klaus. That night, Maria invites Klaus, her secret crush, to join
+her at the party, and he gladly accepts.
+On Valentine’s Day, five agents, including Klaus and Maria, show
+up at Hobbs Cafe at 5 pm, and they enjoy the festivities (Figure 4).
+In this scenario, the end user only set Isabella’s initial intent to
+throw a party and Maria’s crush on Klaus: the social behaviors of
+spreading the word, decorating, asking each other out, arriving at
+the party, and interacting with each other at the party were initiated
+by the agent architecture.
+UIST ’23, October 29-November 1, 2023, San Francisco, CA, USA J.S. Park, J.C. O’Brien, C.J. Cai, M.R. Morris, P. Liang, M.S. Bernstein
+Figure 5: Our generative agent architecture. Agents perceive their environment, and all perceptions are saved in a comprehensive
+record of the agent’s experiences called the memory stream. Based on their perceptions, the architecture retrieves relevant
+memories and uses those retrieved actions to determine an action. These retrieved memories are also used to form longer-term
+plans and create higher-level reflections, both of which are entered into the memory stream for future use.
+4 GENERATIVE AGENT ARCHITECTURE
+Generative agents aim to provide a framework for behavior in an
+open world: one that can engage in interactions with other agents
+and react to changes in the environment. Generative agents take
+their current environment and past experiences as input and gener-
+ate behavior as output. Underlying this behavior is a novel agent ar-
+chitecture that combines a large language model with mechanisms
+for synthesizing and retrieving relevant information to condition
+the language model’s output. Without these mechanisms, large
+language models can output behavior, but the resulting agents may
+not react based on the agent’s past experiences, may not make
+important inferences, and may not maintain long-term coherence.
+Challenges with long-term planning and coherence remain [19]
+even with today’s most performant models such as GPT-4. Because
+generative agents produce large streams of events and memories
+that must be retained, a core challenge of our architecture is to
+ensure that the most relevant pieces of the agent’s memory are
+retrieved and synthesized when needed.
+At the center of our architecture is the memory stream, a data-
+base that maintains a comprehensive record of an agent’s experi-
+ence. From the memory stream, records are retrieved as relevant to
+plan the agent’s actions and react appropriately to the environment.
+Records are recursively synthesized into higher- and higher-level
+reflections that guide behavior. Everything in the architecture is
+recorded and reasoned over as a natural language description, al-
+lowing the architecture to leverage a large language model.
+Our current implementation utilizes the gpt3.5-turbo version of
+ChatGPT [77]. We expect that the architectural basics of genera-
+tive agents—memory, planning, and reflection—will likely remain
+the same as language models improve. Newer language models
+(e.g., GPT-4) will continue to expand the expressive power and
+performance of the prompts that underpin generative agents. As of
+writing, however, GPT-4’s API was invitation-only, so our agents
+use ChatGPT.
+4.1 Memory and Retrieval
+Challenge: Creating generative agents that can simulate human
+behavior requires reasoning about a set of experiences that is far
+larger than what should be described in a prompt, as the full mem-
+ory stream can distract the model and does not even currently fit
+into the limited context window. Consider the Isabella agent an-
+swering the question, “What are you passionate about these days?”
+Summarizing all of Isabella’s experiences to fit in the limited con-
+text window of the language model produces an uninformative
+response, where Isabella discusses topics such as collaborations for
+events and projects and cleanliness and organization in a cafe. In-
+stead of summarizing, the memory stream described below surfaces
+relevant memories, resulting in a more informative and specific
+response that mentions Isabella’s passion for making people feel
+welcome and included, planning events and creating an atmosphere
+that people can enjoy, such as the Valentine’s Day party.
+Approach: The memory stream maintains a comprehensive record
+of the agent’s experience. It is a list of memory objects, where each
+object contains a natural language description, a creation times-
+tamp, and a most recent access timestamp. The most basic element
+of the memory stream is an observation, which is an event directly
+perceived by an agent. Common observations include behaviors
+performed by the agent themselves or behaviors that agents per-
+ceive being performed by other agents or non-agent objects. For
+instance, Isabella Rodriguez, who works at a coffee shop, might
+accrue the following observations over time: (1) Isabella Rodriguez
+is setting out the pastries, (2) Maria Lopez is studying for a Chem-
+istry test while drinking coffee, (3) Isabella Rodriguez and Maria
+Lopez are conversing about planning a Valentine’s day party at
+Hobbs Cafe, (4) The refrigerator is empty.
+Our architecture implements a retrieval function that takes the
+agent’s current situation as input and returns a subset of the mem-
+ory stream to pass on to the language model. There are many pos-
+sible implementations of a retrieval function, depending on what
+is important for the agent to consider when deciding how to act.
+Generative Agents UIST ’23, October 29-November 1, 2023, San Francisco, CA, USA
+Figure 6: The memory stream comprises a large number of observations that are relevant and irrelevant to the agent’s current
+situation. Retrieval identifies a subset of these observations that should be passed to the language model to condition its
+response to the situation.
+In our context, we focus on three main components that, together,
+produce effective results.
+Recency assigns a higher score to memory objects that were re-
+cently accessed, so that events from a moment ago or this morning
+are likely to remain in the agent’s attentional sphere. In our im-
+plementation, we treat recency as an exponential decay function
+over the number of sandbox game hours since the memory was
+last retrieved. Our decay factor is 0.995.
+Importance distinguishes mundane from core memories by as-
+signing a higher score to memory objects that the agent believes to
+be important. For instance, a mundane event, such as eating break-
+fast in one’s room, would yield a low importance score, whereas
+a breakup with one’s significant other would yield a high score.
+There are many possible implementations of an importance score;
+we find that directly asking the language model to output an integer
+score is effective. The full prompt appears below:
+On the scale of 1 to 10, where 1 is purely mundane
+(e.g., brushing teeth, making bed) and 10 is
+extremely poignant (e.g., a break up, college
+acceptance), rate the likely poignancy of the
+following piece of memory.
+Memory: buying groceries at The Willows Market
+and Pharmacy
+Rating: <fill in>
+This prompt returns an integer value of 2for “cleaning up the room”
+and 8 for “asking your crush out on a date.” The importance score
+is generated at the time the memory object is created.
+Relevance assigns a higher score to memory objects that are
+related to the current situation. What is relevant depends on the
+answer to, “Relevant to what?”, so we condition relevance on a
+query memory. If the query, for example, is that a student is dis-
+cussing what to study for a chemistry test with a classmate, memory
+objects about their breakfast should have low relevance, whereas
+memory objects about the teacher and schoolwork should have
+high relevance. In our implementation, we use the language model
+to generate an embedding vector of the text description of each
+memory. Then, we calculate relevance as the cosine similarity be-
+tween the memory’s embedding vector and the query memory’s
+embedding vector.
+To calculate the final retrieval score, we normalize the recency,
+relevance, and importance scores to the range of [0,1]using min-
+max scaling. The retrieval function scores all memories as a weighted
+combination of the three elements: 𝑠𝑐𝑜𝑟𝑒 = 𝛼𝑟𝑒𝑐𝑒𝑛𝑐𝑦·𝑟𝑒𝑐𝑒𝑛𝑐𝑦 +
+𝛼𝑖𝑚𝑝𝑜𝑟𝑡𝑎𝑛𝑐𝑒·𝑖𝑚𝑝𝑜𝑟𝑡𝑎𝑛𝑐𝑒+𝛼𝑟𝑒𝑙𝑒𝑣𝑎𝑛𝑐𝑒·𝑟𝑒𝑙𝑒𝑣𝑎𝑛𝑐𝑒. In our implemen-
+tation, all 𝛼s are set to 1. The top-ranked memories that fit within
+the language model’s context window are included in the prompt.
+4.2 Reflection
+Challenge: Generative agents, when equipped with only raw ob-
+servational memory, struggle to generalize or make inferences.
+Consider a scenario in which Klaus Mueller is asked by the user:
+“If you had to choose one person of those you know to spend an
+hour with, who would it be?" With access to only observational
+memory, the agent simply chooses the person with whom Klaus
+has had the most frequent interactions: Wolfgang, his college dorm
+neighbor. Unfortunately, Wolfgang and Klaus only ever see each
+other in passing, and do not have deep interactions. A more desir-
+able response requires that the agent generalize from memories of
+Klaus spending hours on a research project to generate a higher-
+level reflection that Klaus is passionate about research, and likewise
+UIST ’23, October 29-November 1, 2023, San Francisco, CA, USA J.S. Park, J.C. O’Brien, C.J. Cai, M.R. Morris, P. Liang, M.S. Bernstein
+Figure 7: A reflection tree for Klaus Mueller. The agent’s observations of the world, represented in the leaf nodes, are recursively
+synthesized to derive Klaus’s self-notion that he is highly dedicated to his research.
+recognize Maria putting in effort into her own research (albeit in
+a different field), enabling a reflection that they share a common
+interest. With the approach below, when Klaus is asked who to
+spend time with, Klaus chooses Maria instead of Wolfgang.
+Approach: We introduce a second type of memory, which we call
+a reflection. Reflections are higher-level, more abstract thoughts
+generated by the agent. Because they are a type of memory, they
+are included alongside other observations when retrieval occurs.
+Reflections are generated periodically; in our implementation, we
+generate reflections when the sum of the importance scores for the
+latest events perceived by the agents exceeds a threshold (150 in
+our implementation). In practice, our agents reflected roughly two
+or three times a day.
+The first step in reflection is for the agent to determine what
+to reflect on, by identifying questions that can be asked given the
+agent’s recent experiences. We query the large language model with
+the 100 most recent records in the agent’s memory stream (e.g.,
+“Klaus Mueller is reading a book on gentrification”, “Klaus Mueller is
+conversing with a librarian about his research project”, “desk at the
+library is currently unoccupied”) and prompt the language model,
+“Given only the information above, what are 3 most salient high-
+level questions we can answer about the subjects in the statements?”
+The model’s response generates candidate questions: for example,
+What topic is Klaus Mueller passionate about? and What is the
+relationship between Klaus Mueller and Maria Lopez?We use these
+generated questions as queries for retrieval, and gather relevant
+memories (including other reflections) for each question. Then
+we prompt the language model to extract insights and cite the
+particular records that served as evidence for the insights. The full
+prompt is as follows:
+Statements about Klaus Mueller
+1. Klaus Mueller is writing a research paper
+2. Klaus Mueller enjoys reading a book
+on gentrification
+3. Klaus Mueller is conversing with Ayesha Khan
+about exercising [...]
+What 5 high-level insights can you infer from
+the above statements? (example format: insight
+(because of 1, 5, 3))
+This process generates statements such as Klaus Mueller is dedi-
+cated to his research on gentrification (because of 1, 2, 8, 15). We
+parse and store the statement as a reflection in the memory stream,
+including pointers to the memory objects that were cited.
+Reflection explicitly allows the agents to reflect not only on
+their observations but also on other reflections: for example, the
+second statement about Klaus Mueller above is a reflection that
+Klaus previously had, not an observation from his environment.
+As a result, agents generate trees of reflections: the leaf nodes of
+the tree represent the base observations, and the non-leaf nodes
+represent thoughts that become more abstract and higher-level the
+higher up the tree they are.
+4.3 Planning and Reacting
+Challenge: While a large language model can generate plausible be-
+havior in response to situational information (e.g., [46, 80]), agents
+need to plan over a longer time horizon to ensure that their sequence
+of actions is coherent and believable. If we prompt a language model
+with Klaus’s background, describe the time, and ask what action
+he ought to take at the given moment, Klaus would eat lunch at 12
+pm, but then again at 12:30 pm and 1 pm, despite having already
+Generative Agents eaten his lunch twice. Optimizing for believability in the moment
+sacrifices believability over time. To overcome this issue, planning
+is essential. With the approach described below, Klaus’s afternoon
+plan is less gluttonous: he has lunch at Hobbs Cafe while reading
+at 12pm, works on his research paper at the school library at 1pm,
+and takes a break for a walk in the park at 3pm.
+Approach: Plans describe a future sequence of actions for the agent,
+and help keep the agent’s behavior consistent over time. A plan
+includes a location, a starting time, and a duration. For instance,
+Klaus Mueller, who is dedicated in his research and has an im-
+pending deadline,5 may choose to spend his day working at his
+desk drafting his research paper. An entry in a plan might state,
+for example: for 180 minutes from 9am, February 12th, 2023, at
+Oak Hill College Dorm: Klaus Mueller’s room: desk, read and
+take notes for research paper. Like reflections, plans are stored in
+the memory stream and are included in the retrieval process. This
+allows the agent to consider observations, reflections, and plans all
+together when deciding how to behave. Agents may change their
+plans midstream if needed.
+It would be unrealistic and uninteresting for an artist agent
+to plan on painting while sitting at a pharmacy counter for four
+hours without moving. A more desirable plan would involve the
+agent taking the necessary time to gather materials, mix paint, take
+breaks, and clean up during the four-hour period in their home
+studio. To create such plans, our approach starts top-down and
+then recursively generates more detail. The first step is to create
+a plan that outlines the day’s agenda in broad strokes. To create
+the initial plan, we prompt the language model with the agent’s
+summary description (e.g., name, traits, and a summary of their
+recent experiences) and a summary of their previous day. A full
+example prompt is below, which is unfinished at the bottom for the
+language model to complete:
+Name: Eddy Lin (age: 19)
+Innate traits: friendly, outgoing, hospitable
+Eddy Lin is a student at Oak Hill College studying
+music theory and composition. He loves to explore
+different musical styles and is always looking for
+ways to expand his knowledge. Eddy Lin is working
+on a composition project for his college class. He
+is taking classes to learn more about music theory.
+Eddy Lin is excited about the new composition he
+is working on but he wants to dedicate more hours
+in the day to work on it in the coming days
+On Tuesday February 12, Eddy 1) woke up and
+completed the morning routine at 7:00 am, [. . . ]
+6) got ready to sleep around 10 pm.
+Today is Wednesday February 13. Here is Eddy’s
+plan today in broad strokes: 1)
+This generates a rough sketch of the agent’s plan for a day, divided
+into five to eight chunks: “1) wake up and complete the morning
+routine at 8:00 am, 2) go to Oak Hill College to take classes starting
+10:00 am, [...] 5) work on his new music composition from 1:00 pm
+to 5:00 pm, 6) have dinner at 5:30 pm, 7) finish school assignments
+and go to bed by 11:00 pm.”
+5And, in this way, bears at least a passing resemblance to the authors of this paper.
+UIST ’23, October 29-November 1, 2023, San Francisco, CA, USA
+The agent saves this plan in the memory stream and then re-
+cursively decomposes it to create finer-grained actions, first into
+hour-long chunks of actions—Eddy’s plan to work on his new music
+composition from 1:00 pm to 5:00 pm becomes 1:00 pm: start
+by brainstorming some ideas for his music composition [...] 4:00
+pm: take a quick break and recharge his creative energy before
+reviewing and polishing his composition. We then recursively de-
+compose this again into 5–15 minute chunks: e.g., 4:00 pm: grab a
+light snack, such as a piece of fruit, a granola bar, or some nuts.
+4:05 pm: take a short walk around his workspace [...] 4:50 pm:
+take a few minutes to clean up his workspace. This process can be
+adjusted to match the desired granularity.
+4.3.1 Reacting and Updating Plans. Generative agents operate in
+an action loop where, at each time step, they perceive the world
+around them and those perceived observations are stored in their
+memory stream. We prompt the language model with these obser-
+vations to decide whether the agent should continue with their
+existing plan, or react. Standing at an easel and painting, for exam-
+ple, might trigger an observation of the easel, but this is unlikely to
+prompt a reaction. However, if Eddy’s father John records that he
+sees Eddy taking a short walk in the house garden, the outcome is
+different. The prompt is below, with [Agent’s Summary Descrip-
+tion] standing in for a dynamically-generated, paragraph-long
+summary of the agent’s overall goals and disposition, which is
+described in Appendix A:
+[Agent’s Summary Description]
+It is February 13, 2023, 4:56 pm.
+John Lin’s status: John is back home early from
+work.
+Observation: John saw Eddy taking a short walk
+around his workplace.
+Summary of relevant context from John’s memory:
+Eddy Lin is John’s Lin’s son. Eddy Lin has been
+working on a music composition for his class. Eddy
+Lin likes to walk around the garden when he is
+thinking about or listening to music.
+Should John react to the observation, and if so,
+what would be an appropriate reaction?
+The context summary is generated through two prompts that re-
+trieve memories via the queries “What is [observer]’s relationship
+with the [observed entity]?” and “[Observed entity] is [action status
+of the observed entity]”, and their answers summarized together.
+The output suggests that John could consider asking Eddy about
+his music composition project. We then regenerate the agent’s
+existing plan starting from the time when the reaction takes place.
+Finally, if the action indicates an interaction between agents, we
+generate their dialogue.
+4.3.2 Dialogue. Agents converse as they interact with each other.
+We generate agents’ dialogue by conditioning their utterances on
+their memories about each other. For example, when John initiates
+his conversation with Eddy, we generate John’s first utterance
+by using his summarized memory about Eddy and the intended
+reaction when he decided to ask Eddy about his composition project:
+[Agent’s Summary Description]
+It is February 13, 2023, 4:56 pm.
+UIST ’23, October 29-November 1, 2023, San Francisco, CA, USA John Lin’s status: John is back home early from
+work.
+Observation: John saw Eddy taking a short walk
+around his workplace.
+Summary of relevant context from John’s memory:
+Eddy Lin is John’s Lin’s son. Eddy Lin has been
+working on a music composition for his class. Eddy
+Lin likes to walk around the garden when he is
+thinking about or listening to music.
+John is asking Eddy about his music composition
+project. What would he say to Eddy?
+The result: “Hey Eddy, how’s the music composition project for
+your class coming along?” From Eddy’s perspective, John initiating
+the dialogue is seen as an event to which he may want to react.
+So, just as John did, Eddy retrieves and summarizes his memory
+about his relationship with John, as well as his memory that may
+be related to John’s last utterance in the dialogue. If he decides
+to respond, we generate Eddy’s utterance using his summarized
+memory and the current dialogue history:
+[Agent’s Summary Description]
+It is February 13, 2023, 4:56 pm.
+Eddy Lin’s status: Eddy is taking a short walk
+around his workplace.
+Observation: John is initiating a conversation
+with Eddy.
+Summary of relevant context from Eddy’s memory:
+John Lin is Eddy Lin’s father. John Lin is caring
+and is interested to learn more about Eddy Lin’s
+school work. John Lin knows that Eddy Lin is
+working on a music composition.
+Here is the dialogue history:
+John: Hey Eddy, how’s the music composition project
+for your class coming along?
+How would Eddy respond to John?
+This generates Eddy’s response: “Hey Dad, it’s going well. I’ve been
+taking walks around the garden to clear my head and get some
+inspiration.” The continuation of this dialogue is generated using
+the same mechanism until one of the two agents decides to end the
+dialogue.
+5 SANDBOX ENVIRONMENT
+IMPLEMENTATION
+The Smallville sandbox game environment is built using the Phaser
+web game development framework [57]. The visual environment
+sprites, including agent avatars, as well as an environment map
+and collision map that we authored, are imported into Phaser.
+We supplement the sandbox development framework with a
+server that makes the sandbox information available to generative
+agents and enables generative agents to move and influence the
+sandbox environment. The server maintains a JSON data structure
+that contains information about each agent in the sandbox world,
+including their current location, a description of their current action,
+and the sandbox object they are interacting with. At each sandbox
+time step, the sandbox server parses the JSON for any changes
+coming from the generative agents, moves the agents to their new
+positions, and updates the status of any sandbox objects that the
+J.S. Park, J.C. O’Brien, C.J. Cai, M.R. Morris, P. Liang, M.S. Bernstein
+agents are interacting with (e.g., changing the status of the coffee
+machine from “idle” to “brewing coffee” if an agent’s action is
+“making espresso for a customer @ Hobbs Cafe: counter: coffee
+machine”). The sandbox server is also responsible for sending all
+agents and objects that are within a preset visual range for each
+agent to that agent’s memory, so the agent can react appropriately.
+The agent’s output action then updates the JSON, and the process
+loops for the next time step.
+End users initialize a new agent with a brief natural language
+description, as in the paragraph about John Lin in Section 3.1. In our
+implementation, we split this semicolon-delimited list of character-
+istics up into a set of memories. These serve as the initial memories
+that determine the agent’s behavior. These memories are initial
+starting points: as the agents gain more experience in the sandbox
+world, and as more records saturate the memory stream, the agent’s
+summary and behavior will evolve.
+5.1 From Structured World Environments to
+Natural Language, and Back Again
+The architecture of generative agents operates using natural lan-
+guage. Therefore, we need a mechanism to ground the agent’s
+reasoning to the sandbox world. To achieve this, we represent the
+sandbox environment—areas and objects—as a tree data structure,
+with an edge in the tree indicating a containment relationship in
+the sandbox world. We convert this tree into natural language to
+pass to the generative agents. For instance, “stove” being a child of
+“kitchen” is rendered into “there is a stove in the kitchen.”
+Agents build individual tree representations of the environment
+as they navigate it — subgraphs of the overall sandbox environment
+tree. We initialize each agent with an environment tree capturing
+the spaces and objects that the agent should be aware of: the rooms
+and objects in their living quarters, their workplace, and commonly
+visited stores and shops. As the agents navigate the sandbox world,
+they update this tree to reflect newly perceived areas. Agents are
+not omniscient: their tree may get out of date as they leave an area,
+and is updated when they re-enter the area.
+To determine the appropriate location for each action, we tra-
+verse the agent’s stored environment tree and flatten a portion of
+it into natural language to prompt the language model. Recursively
+starting at the root of the agent’s environment tree, we prompt the
+model to find the most suitable area. For example, if Eddy’s agent
+indicated that he should take a short walk around his workspace:
+[Agent’s Summary Description]
+Eddy Lin is currently in The Lin family’s house:
+Eddy Lin’s bedroom: desk) that has Mei and John
+Lin’s
+bedroom, Eddy Lin’s bedroom, common room, kitchen,
+bathroom, and garden.
+Eddy Lin knows of the following areas: The Lin
+family’s house, Johnson Park, Harvey Oak Supply
+Store, The Willows Market and Pharmacy, Hobbs
+Cafe, The Rose and Crown Pub.
+* Prefer to stay in the current area if the
+activity can be done there.
+Eddy Lin is planning to take a short walk around
+his workspace. Which area should Eddy Lin go to?
+Generative Agents This outputs The Lin family’s house. We then use the same process
+recursively to determine the most appropriate subarea within the
+chosen area until we reach a leaf node of the agent’s environment
+tree. In the example above, the result of this traversal is The Lin
+family’s house: garden: house garden. Finally, we use traditional
+game path algorithms to animate the agent’s movement so that it
+travels to the location indicated by the leaf node.
+When an agent executes an action on an object, we prompt the
+language model to ask what happens to the state of the object. For
+example, if Isabella’s generative agent outputs the action “making
+espresso for a customer”, a query to the language model indicates in
+response that the state of the coffee machine in Hobbs Cafe should
+change from “off” to “brewing coffee”.
